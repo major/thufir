@@ -4,6 +4,7 @@
 //! error handling, and type aliases for the bot's command context.
 
 pub mod ping;
+pub mod trade_dashboard;
 
 /// Empty data type for the command framework. Will be extended in Task 10 with AppState.
 pub type Data = ();
