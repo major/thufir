@@ -1,0 +1,11 @@
+[package]
+name = "thufir"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.96"
+publish = false
+
+[lints.rust]
+unused = { level = "deny", priority = -1 }
+
+[dependencies]
