@@ -111,6 +111,7 @@ Container build:
 
 - Builder: `registry.access.redhat.com/hi/rust:1.95-builder`, installs Rust 1.96.0 with rustup, then builds the release binary with Rust 1.96.
 - Runtime: `registry.access.redhat.com/hi/core-runtime:2.42`, copies OpenSSL runtime libraries and the binary to `/usr/bin/thufir`, runs as the image default non-root user.
+- CI builds the container image on pull requests and pushes to `main`. Pushes to `main` also publish `ghcr.io/major/thufir` with the commit SHA tag and `latest`.
 
 ## Quality Gates
 
@@ -125,11 +126,11 @@ Container build:
 | `coverage` | `cargo llvm-cov`, 90% line coverage for local `make check` |
 | `patch-coverage` | `diff-cover`, 95% patch coverage against `main` |
 
-Additional targets: `make audit`, `make machete`, `make integration`, `make container-build`, `make container-run`, `make container-run-config`.
+Additional targets: `make audit`, `make machete`, `make integration`, `make container-build`, `make container-run`, `make container-run-config`, `make container-push`.
 
 ## CI and Testing
 
-`.github/workflows/ci.yml` runs fmt, clippy, test, MSRV 1.96 `cargo check --locked`, docs with warnings denied, and llvm-cov LCOV generation/upload without a blocking coverage threshold while the baseline catches up. `.github/workflows/audit.yml` runs weekly and on `Cargo.lock` or `Cargo.toml` changes.
+`.github/workflows/ci.yml` runs fmt, clippy, test, MSRV 1.96 `cargo check --locked`, docs with warnings denied, llvm-cov LCOV generation/upload without a blocking coverage threshold while the baseline catches up, and container builds. Pull requests build the container image without publishing. Pushes to `main` build and publish `ghcr.io/major/thufir` with the commit SHA tag and `latest`. `.github/workflows/audit.yml` runs weekly and on `Cargo.lock` or `Cargo.toml` changes.
 
 All CI tests use mocks and require zero live secrets. Unit tests live inline in `#[cfg(test)] mod tests`; `tests/cli.rs` verifies CLI help/version without secrets. Use mockito for VolumeLeaders HTTP responses, mockall for trait mocks, assert_cmd for CLI tests, and `#[tokio::test]` for async tests. The `rusty-volumeleaders` `test-support` feature provides `test_session()` and `datatables_body()`.
 
@@ -141,7 +142,7 @@ All CI tests use mocks and require zero live secrets. Unit tests live inline in 
 
 ## Deferred
 
-Do not implement these without a plan update: scheduler or `tokio-cron-scheduler`, webhooks, global command registration, live smoke tests in CI, Sentry, multi-guild support, high availability or clustering, GHCR publish automation, release-plz, or extra commands such as `/jobs`, `/status`, `/data`, or `/volumeleaders` alias.
+Do not implement these without a plan update: scheduler or `tokio-cron-scheduler`, webhooks, global command registration, live smoke tests in CI, Sentry, multi-guild support, high availability or clustering, release-plz, or extra commands such as `/jobs`, `/status`, `/data`, or `/volumeleaders` alias.
 
 ## Optional Manual Smoke Test
 
