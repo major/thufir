@@ -1,6 +1,6 @@
 //! Trade dashboard command for the Thufir bot.
 //!
-//! Provides a `/trade_dashboard` slash command that fetches VolumeLeaders data
+//! Provides a `/trade-dashboard` slash command that fetches VolumeLeaders data
 //! for a given ticker and renders it as a Discord embed.
 
 #![allow(missing_docs)]
@@ -85,7 +85,7 @@ fn ticker_date_filters(ticker: &str, days: u32) -> Vec<(String, String)> {
 
 /// Show the VolumeLeaders trade dashboard for a ticker.
 #[allow(missing_docs)]
-#[poise::command(slash_command, guild_only)]
+#[poise::command(slash_command, guild_only, rename = "trade-dashboard")]
 pub async fn trade_dashboard(
     ctx: Context<'_>,
     #[description = "Stock ticker symbol (e.g. AAPL)"] ticker: String,
