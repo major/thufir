@@ -36,7 +36,7 @@ src/
   dashboard.rs         - Discord embed renderer, truncation, formatting
   commands/            - poise command handlers
 tests/cli.rs           - assert_cmd integration tests, no secrets
-Containerfile          - multi-stage UBI9 native-TLS build
+Containerfile          - multi-stage Red Hat hardened image build
 Makefile               - quality gate targets
 .github/workflows/     - ci.yml, audit.yml
 ```
@@ -54,20 +54,29 @@ Makefile               - quality gate targets
 7. `AppState` stores `Arc<RwLock<VolumeLeadersManager>>`.
 8. Poise `Framework` registers commands in one guild via `register_in_guild()`.
 9. Serenity client uses `GatewayIntents::non_privileged()`.
-10. `tokio::select!` runs `client.start()` or `ctrl_c()` shutdown.
+10. `tokio::select!` runs `client.start()` or graceful shutdown from Ctrl+C/SIGTERM.
 
 ## Configuration
 
-Required variables:
+Secret variables are env-only:
 
 | Variable | Source | Description |
 |---|---|---|
 | `DISCORD_TOKEN` | Set directly | Discord bot token |
-| `THUFIR_DISCORD__GUILD_ID` | `THUFIR_` prefix | Numeric guild ID |
 | `VL_USERNAME` | rusty-volumeleaders | VolumeLeaders username |
 | `VL_PASSWORD` | rusty-volumeleaders | VolumeLeaders password |
 
-`VL_USERNAME` and `VL_PASSWORD` are consumed by `rusty_volumeleaders::resolve_credentials()`, not by `src/config.rs`. Optional config file: `thufir.toml`, passed via `--config`. `THUFIR_` env vars override TOML; double underscore separates nested keys.
+`VL_USERNAME` and `VL_PASSWORD` are consumed by `rusty_volumeleaders::resolve_credentials()`, not by `src/config.rs`. `DISCORD_TOKEN` is loaded directly from the process environment and is ignored if present in TOML.
+
+Non-secret settings belong in the optional `thufir.toml`, passed via `--config`. `THUFIR_` env vars may override TOML for deployments that prefer environment-driven non-secrets; double underscore separates nested keys.
+
+| Setting | TOML path | Env override | Description |
+|---|---|---|---|
+| `discord.guild_id` | `[discord] guild_id` | `THUFIR_DISCORD__GUILD_ID` | Numeric guild ID |
+| `commands.ping.allowed_channels` | `[commands.ping] allowed_channels` | `THUFIR_COMMANDS__PING__ALLOWED_CHANNELS` | Optional `/ping` channel allow-list |
+| `commands.trade_dashboard.allowed_channels` | `[commands.trade_dashboard] allowed_channels` | `THUFIR_COMMANDS__TRADE_DASHBOARD__ALLOWED_CHANNELS` | Optional `/trade-dashboard` channel allow-list |
+
+Command channel allow-lists are configured under `[commands.<command>].allowed_channels`. Empty lists are the default and mean unrestricted within the configured guild. Denials are ephemeral and happen before command-specific validation or external data calls.
 
 Defaults:
 
@@ -85,7 +94,7 @@ Defaults:
 | `/ping` | `src/commands/ping.rs` | Health check, replies `Pong!` |
 | `/trade-dashboard` | `src/commands/trade_dashboard.rs` | Validates ticker/days/count, fetches four VolumeLeaders datasets, renders embed |
 
-Commands are registered guild-only. Add new commands to `commands::get_commands()` and this table.
+Commands are registered guild-only. Add new commands to `commands::get_commands()`, `CommandsConfig`, `AppState` command access, channel checks, and this table.
 
 ## VolumeLeaders and Dashboard
 
@@ -96,12 +105,12 @@ Commands are registered guild-only. Add new commands to `commands::get_commands(
 
 ## TLS and Container Policy
 
-Native TLS only. `reqwest` uses `native-tls`, `serenity` uses `default_native_tls`, and UBI9 supplies OpenSSL. Do not switch to rustls or AWS TLS without a plan update.
+Native TLS only. `reqwest` uses `native-tls`, `serenity` uses `default_native_tls`, and Red Hat hardened images supply the runtime TLS stack. Do not switch to rustls or AWS TLS without a plan update.
 
 Container build:
 
-- Builder: `registry.access.redhat.com/ubi9/ubi:latest`, installs gcc, openssl-devel, perl-FindBin, pkg-config, then Rust 1.96.0 via rustup.
-- Runtime: `registry.access.redhat.com/ubi9/ubi-minimal:latest`, copies binary to `/usr/bin/thufir`, runs as UID 1001.
+- Builder: `registry.access.redhat.com/hi/rust:1.95-builder`, installs Rust 1.96.0 with rustup, then builds the release binary with Rust 1.96.
+- Runtime: `registry.access.redhat.com/hi/core-runtime:2.42`, copies OpenSSL runtime libraries and the binary to `/usr/bin/thufir`, runs as the image default non-root user.
 
 ## Quality Gates
 

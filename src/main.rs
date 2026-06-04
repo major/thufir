@@ -53,6 +53,7 @@ async fn main() -> thufir::Result<()> {
 
     // Build shared application state.
     let app_state = AppState {
+        commands: config.commands.clone(),
         vl_manager: Arc::new(RwLock::new(manager)),
     };
 
@@ -82,17 +83,42 @@ async fn main() -> thufir::Result<()> {
         .await
         .map_err(|e| thufir::Error::Discord(e.to_string()))?;
 
-    // Run the bot with graceful shutdown on Ctrl+C.
+    // Run the bot with graceful shutdown on interactive and container stop signals.
     tokio::select! {
         biased;
         result = client.start() => {
             result.map_err(|e| thufir::Error::Discord(e.to_string()))?;
         }
-        _ = tokio::signal::ctrl_c() => {
-            info!("Received Ctrl+C, shutting down");
+        signal = shutdown_signal() => {
+            let signal = signal?;
+            info!("Received {signal}, shutting down");
             client.shard_manager.shutdown_all().await;
         }
     }
 
     Ok(())
+}
+
+#[cfg(unix)]
+async fn shutdown_signal() -> thufir::Result<&'static str> {
+    use tokio::signal::unix::{SignalKind, signal};
+
+    let mut terminate = signal(SignalKind::terminate())
+        .map_err(|e| thufir::Error::Discord(format!("failed to install SIGTERM handler: {e}")))?;
+
+    tokio::select! {
+        result = tokio::signal::ctrl_c() => {
+            result.map_err(|e| thufir::Error::Discord(format!("failed to listen for Ctrl+C: {e}")))?;
+            Ok("Ctrl+C")
+        }
+        _ = terminate.recv() => Ok("SIGTERM"),
+    }
+}
+
+#[cfg(not(unix))]
+async fn shutdown_signal() -> thufir::Result<&'static str> {
+    tokio::signal::ctrl_c()
+        .await
+        .map_err(|e| thufir::Error::Discord(format!("failed to listen for Ctrl+C: {e}")))?;
+    Ok("Ctrl+C")
 }

@@ -3,13 +3,18 @@
 //! Loads configuration from environment variables and optional TOML file.
 //! Environment variables take precedence over TOML settings.
 //!
-//! Required environment variables:
+//! Secret environment variables:
 //! - `DISCORD_TOKEN`: Discord bot token
-//! - `THUFIR_DISCORD__GUILD_ID`: Discord guild ID
 //!
-//! Optional environment variables (with defaults):
+//! Non-secret settings may be provided by TOML or `THUFIR_` environment variables.
+//! Environment variables override TOML settings.
+//!
+//! Optional environment variables:
 //! - `THUFIR_BOT__LOG_LEVEL`: Log level (default: "info")
 //! - `THUFIR_BOT__TIMEZONE`: Timezone (default: "America/New_York")
+//! - `THUFIR_COMMANDS__PING__ALLOWED_CHANNELS`: Channel IDs where `/ping` may run
+//! - `THUFIR_DISCORD__GUILD_ID`: Discord guild ID
+//! - `THUFIR_COMMANDS__TRADE_DASHBOARD__ALLOWED_CHANNELS`: Channel IDs where `/trade-dashboard` may run
 //! - `THUFIR_VOLUME_LEADERS__DASHBOARD_DAYS`: Dashboard lookback days (default: 365)
 //! - `THUFIR_VOLUME_LEADERS__DASHBOARD_COUNT`: Dashboard top count (default: 10)
 
@@ -18,6 +23,7 @@ use figment::{
     providers::{Env, Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
+use std::fmt;
 
 /// Top-level configuration for the Thufir bot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -26,6 +32,9 @@ pub struct Config {
     pub bot: BotConfig,
     /// Discord-specific settings.
     pub discord: DiscordConfig,
+    /// Slash command-specific settings.
+    #[serde(default)]
+    pub commands: CommandsConfig,
     /// Volume leaders dashboard settings.
     pub volume_leaders: VolumeLeadersConfig,
 }
@@ -42,12 +51,41 @@ pub struct BotConfig {
 }
 
 /// Discord-specific configuration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct DiscordConfig {
-    /// Discord bot token (required).
+    /// Discord bot token loaded only from `DISCORD_TOKEN`.
+    #[serde(skip)]
     pub token: String,
-    /// Discord guild ID (required).
+    /// Discord guild ID.
     pub guild_id: u64,
+}
+
+impl fmt::Debug for DiscordConfig {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("DiscordConfig")
+            .field("token", &"<redacted>")
+            .field("guild_id", &self.guild_id)
+            .finish()
+    }
+}
+
+/// Slash command-specific configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CommandsConfig {
+    /// Settings for the `/ping` command.
+    #[serde(default)]
+    pub ping: CommandConfig,
+    /// Settings for the `/trade-dashboard` command.
+    #[serde(default)]
+    pub trade_dashboard: CommandConfig,
+}
+
+/// Configuration shared by individual slash commands.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct CommandConfig {
+    /// Channel IDs where the command may be used. Empty means all channels are allowed.
+    #[serde(default)]
+    pub allowed_channels: Vec<u64>,
 }
 
 /// Volume leaders dashboard configuration.
@@ -88,6 +126,7 @@ impl Default for Config {
                 token: String::new(),
                 guild_id: 0,
             },
+            commands: CommandsConfig::default(),
             volume_leaders: VolumeLeadersConfig {
                 dashboard_days: default_dashboard_days(),
                 dashboard_count: default_dashboard_count(),
@@ -108,7 +147,7 @@ impl Config {
     ///
     /// Returns a configuration error if:
     /// - `DISCORD_TOKEN` environment variable is not set
-    /// - `THUFIR_DISCORD__GUILD_ID` environment variable is not set
+    /// - Discord guild ID is not set in TOML or `THUFIR_DISCORD__GUILD_ID`
     /// - The TOML file cannot be parsed
     /// - Environment variables cannot be parsed
     pub fn load(config_path: Option<&str>) -> crate::Result<Self> {
@@ -117,7 +156,7 @@ impl Config {
 
         // Merge TOML file if provided
         if let Some(path) = config_path {
-            figment = figment.merge(Toml::file(path).nested());
+            figment = figment.merge(Toml::file(path));
         }
 
         // Merge environment variables with THUFIR_ prefix
@@ -133,10 +172,10 @@ impl Config {
             crate::Error::Config("DISCORD_TOKEN environment variable not set".to_string())
         })?;
 
-        // Validate that guild_id was set
+        // Validate that guild_id was set through TOML or THUFIR_ env config.
         if config.discord.guild_id == 0 {
             return Err(crate::Error::Config(
-                "THUFIR_DISCORD__GUILD_ID environment variable not set".to_string(),
+                "discord.guild_id must be set in TOML or THUFIR_DISCORD__GUILD_ID".to_string(),
             ));
         }
 
@@ -170,6 +209,8 @@ mod tests {
         assert_eq!(config.discord.guild_id, 987654321);
         assert_eq!(config.bot.log_level, "info");
         assert_eq!(config.bot.timezone, "America/New_York");
+        assert!(config.commands.ping.allowed_channels.is_empty());
+        assert!(config.commands.trade_dashboard.allowed_channels.is_empty());
         assert_eq!(config.volume_leaders.dashboard_days, 365);
         assert_eq!(config.volume_leaders.dashboard_count, 10);
 
@@ -220,14 +261,14 @@ mod tests {
         let config = Config::load(None);
         assert!(
             config.is_err(),
-            "Config should fail without THUFIR_DISCORD__GUILD_ID"
+            "Config should fail without discord.guild_id"
         );
 
         let err = config.unwrap_err();
         let err_msg = err.to_string();
         assert!(
-            err_msg.contains("THUFIR_DISCORD__GUILD_ID"),
-            "Error message should mention THUFIR_DISCORD__GUILD_ID, got: {}",
+            err_msg.contains("discord.guild_id"),
+            "Error message should mention discord.guild_id, got: {}",
             err_msg
         );
 
@@ -250,6 +291,8 @@ mod tests {
 
         assert_eq!(config.bot.log_level, "info");
         assert_eq!(config.bot.timezone, "America/New_York");
+        assert!(config.commands.ping.allowed_channels.is_empty());
+        assert!(config.commands.trade_dashboard.allowed_channels.is_empty());
         assert_eq!(config.volume_leaders.dashboard_days, 365);
         assert_eq!(config.volume_leaders.dashboard_count, 10);
 
@@ -390,5 +433,112 @@ log_level = "debug"
             std::env::remove_var("DISCORD_TOKEN");
             std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
         }
+    }
+
+    #[test]
+    fn config_loads_command_channel_allow_lists_from_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let toml_content = r#"
+[discord]
+guild_id = 4242
+
+[commands.ping]
+allowed_channels = [111, 222]
+
+[commands.trade_dashboard]
+allowed_channels = [333]
+"#;
+        let temp_path = format!("/tmp/thufir_command_channels_{}.toml", std::process::id());
+        std::fs::write(&temp_path, toml_content).expect("Failed to write temp TOML");
+
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "test_token");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+        }
+
+        let config = Config::load(Some(&temp_path)).expect("Config should load");
+
+        assert_eq!(config.discord.guild_id, 4242);
+        assert_eq!(config.commands.ping.allowed_channels, vec![111, 222]);
+        assert_eq!(config.commands.trade_dashboard.allowed_channels, vec![333]);
+
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+        }
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn config_ignores_discord_token_from_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let toml_content = r#"
+[discord]
+token = "toml_token_should_not_be_used"
+guild_id = 4242
+"#;
+        let temp_path = format!("/tmp/thufir_token_source_{}.toml", std::process::id());
+        std::fs::write(&temp_path, toml_content).expect("Failed to write temp TOML");
+
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "env_token");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+        }
+
+        let config = Config::load(Some(&temp_path)).expect("Config should load");
+
+        assert_eq!(config.discord.token, "env_token");
+        assert_eq!(config.discord.guild_id, 4242);
+
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+        }
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn config_env_overrides_command_channel_allow_lists() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        let toml_content = r#"
+[discord]
+guild_id = 4242
+
+[commands.ping]
+allowed_channels = [111]
+"#;
+        let temp_path = format!("/tmp/thufir_channel_env_{}.toml", std::process::id());
+        std::fs::write(&temp_path, toml_content).expect("Failed to write temp TOML");
+
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "env_token");
+            std::env::set_var("THUFIR_COMMANDS__PING__ALLOWED_CHANNELS", "[222, 333]");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+        }
+
+        let config = Config::load(Some(&temp_path)).expect("Config should load");
+
+        assert_eq!(config.commands.ping.allowed_channels, vec![222, 333]);
+
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+            std::env::remove_var("THUFIR_COMMANDS__PING__ALLOWED_CHANNELS");
+        }
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn discord_config_debug_redacts_token() {
+        let config = DiscordConfig {
+            token: "secret_token".to_owned(),
+            guild_id: 4242,
+        };
+
+        let debug = format!("{config:?}");
+
+        assert!(!debug.contains("secret_token"));
+        assert!(debug.contains("<redacted>"));
+        assert!(debug.contains("4242"));
     }
 }

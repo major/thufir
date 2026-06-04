@@ -1,0 +1,15 @@
+services:
+  thufir:
+    build:
+      context: ..
+      dockerfile: Containerfile
+    image: thufir:dev
+    container_name: thufir-local
+    env_file:
+      - .env
+    volumes:
+      - ./thufir.toml:/etc/thufir/thufir.toml:ro,Z
+    command:
+      - --config
+      - /etc/thufir/thufir.toml
+    restart: unless-stopped

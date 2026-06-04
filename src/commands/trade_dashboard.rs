@@ -12,7 +12,7 @@ use rusty_volumeleaders::{
 
 use crate::dashboard::build_dashboard_embed;
 
-use super::Context;
+use super::{Context, ensure_channel_allowed};
 
 /// Validate and normalize a ticker symbol.
 ///
@@ -92,6 +92,10 @@ pub async fn trade_dashboard(
     #[description = "Number of days to look back (1-3650, default 365)"] days: Option<u32>,
     #[description = "Number of results per section (1-25, default 10)"] count: Option<u32>,
 ) -> Result<(), crate::Error> {
+    if !ensure_channel_allowed(&ctx, &ctx.data().commands.trade_dashboard.allowed_channels).await? {
+        return Ok(());
+    }
+
     // Validate inputs before doing any work.
     let ticker = match normalize_ticker(&ticker) {
         Ok(t) => t,

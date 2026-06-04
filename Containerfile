@@ -1,24 +1,23 @@
-# Builder: UBI9 with Rust 1.96 and native TLS build dependencies
-FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
-
-RUN dnf install -y gcc openssl-devel perl-FindBin pkg-config && \
-    dnf clean all
+# Builder: Red Hat hardened Rust image with project MSRV installed
+FROM registry.access.redhat.com/hi/rust:1.95-builder AS builder
 
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH="/usr/local/cargo/bin:${PATH}"
 
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --default-toolchain 1.96.0 --profile minimal
+    sh -s -- -y --default-toolchain 1.96.0 --profile minimal && \
+    rustup component add clippy rustfmt llvm-tools-preview
 
 WORKDIR /app
 COPY . .
 
 RUN cargo build --release --locked
 
-# Runtime: UBI9 minimal with OpenSSL for native TLS
-FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+# Runtime: Red Hat hardened core runtime
+FROM registry.access.redhat.com/hi/core-runtime:2.42
 
+COPY --from=builder /usr/lib64/libssl.so.3 /usr/lib64/libcrypto.so.3 /usr/lib64/
 COPY --from=builder /app/target/release/thufir /usr/bin/thufir
 
 USER 1001

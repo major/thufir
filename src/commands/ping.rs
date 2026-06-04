@@ -2,7 +2,7 @@
 
 #![allow(missing_docs)]
 
-use super::{Context, Error};
+use super::{Context, Error, ensure_channel_allowed};
 
 /// Returns the ping response message.
 ///
@@ -22,6 +22,10 @@ pub fn ping_response() -> &'static str {
 #[allow(missing_docs)]
 #[poise::command(slash_command, guild_only)]
 pub async fn ping(ctx: Context<'_>) -> Result<(), Error> {
+    if !ensure_channel_allowed(&ctx, &ctx.data().commands.ping.allowed_channels).await? {
+        return Ok(());
+    }
+
     ctx.say(ping_response()).await?;
     Ok(())
 }
