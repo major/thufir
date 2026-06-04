@@ -6,8 +6,8 @@
 pub mod ping;
 pub mod trade_dashboard;
 
-/// Empty data type for the command framework. Will be extended in Task 10 with AppState.
-pub type Data = ();
+/// Shared application state passed to every command via the poise framework.
+pub type Data = crate::state::AppState;
 
 /// Error type for command operations.
 pub type Error = crate::Error;
@@ -20,7 +20,7 @@ pub type Context<'a> = poise::Context<'a, Data, Error>;
 /// # Returns
 /// A vector of poise commands registered with the bot.
 pub fn get_commands() -> Vec<poise::Command<Data, Error>> {
-    vec![ping::ping()]
+    vec![ping::ping(), trade_dashboard::trade_dashboard()]
 }
 
 /// Handles errors that occur during command execution.

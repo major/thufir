@@ -40,7 +40,7 @@ mod tests {
     #[test]
     fn command_list_contains_ping() {
         let commands = super::super::get_commands();
-        assert_eq!(commands.len(), 1);
-        assert_eq!(commands[0].name, "ping");
+        assert_eq!(commands.len(), 2);
+        assert!(commands.iter().any(|c| c.name == "ping"));
     }
 }

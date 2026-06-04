@@ -11,13 +11,8 @@ use rusty_volumeleaders::{
 };
 
 use crate::dashboard::build_dashboard_embed;
-use crate::state::AppState;
 
-/// Context type for commands that require [`AppState`].
-///
-/// Task 10 will unify this with the global `commands::Context` type alias
-/// once `Data` is changed from `()` to `AppState`.
-type Context<'a> = poise::Context<'a, AppState, crate::Error>;
+use super::Context;
 
 /// Validate and normalize a ticker symbol.
 ///

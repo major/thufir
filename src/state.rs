@@ -1,5 +1,6 @@
 //! Application state management for the Thufir bot.
 
+use std::fmt;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -13,4 +14,12 @@ use crate::data_sources::volumeleaders::VolumeLeadersManager;
 pub struct AppState {
     /// VolumeLeaders API session manager.
     pub vl_manager: Arc<RwLock<VolumeLeadersManager>>,
+}
+
+impl fmt::Debug for AppState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AppState")
+            .field("vl_manager", &"<VolumeLeadersManager>")
+            .finish()
+    }
 }
