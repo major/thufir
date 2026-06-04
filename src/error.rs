@@ -26,3 +26,9 @@ pub enum Error {
 
 /// Result type for the Thufir bot.
 pub type Result<T> = std::result::Result<T, Error>;
+
+impl From<serenity::Error> for Error {
+    fn from(err: serenity::Error) -> Self {
+        Error::Discord(err.to_string())
+    }
+}
