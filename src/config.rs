@@ -255,4 +255,118 @@ mod tests {
             std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
         }
     }
+
+    #[test]
+    fn config_env_overrides_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        // Create a temporary TOML file with guild_id=111
+        let toml_content = r#"
+[discord]
+guild_id = 111
+
+[bot]
+log_level = "debug"
+"#;
+        let temp_path = "/tmp/test_config_override.toml";
+        std::fs::write(temp_path, toml_content).expect("Failed to write temp TOML");
+
+        // Set env var to override TOML value
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "test_token_override");
+            std::env::set_var("THUFIR_DISCORD__GUILD_ID", "999");
+            std::env::set_var("THUFIR_BOT__LOG_LEVEL", "warn");
+        }
+
+        let config = Config::load(Some(temp_path)).expect("Config should load with TOML and env");
+
+        // Env vars should override TOML values
+        assert_eq!(config.discord.guild_id, 999, "Env var should override TOML guild_id");
+        assert_eq!(config.bot.log_level, "warn", "Env var should override TOML log_level");
+        assert_eq!(config.discord.token, "test_token_override");
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+            std::env::remove_var("THUFIR_BOT__LOG_LEVEL");
+        }
+        std::fs::remove_file(temp_path).ok();
+    }
+
+    #[test]
+    fn config_invalid_guild_id() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        // Set guild_id to a non-numeric value
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "test_token");
+            std::env::set_var("THUFIR_DISCORD__GUILD_ID", "not-a-number");
+        }
+
+        let config = Config::load(None);
+        assert!(config.is_err(), "Config should fail with non-numeric guild_id");
+
+        let err = config.unwrap_err();
+        let err_msg = err.to_string();
+        assert!(
+            err_msg.contains("guild_id") || err_msg.contains("invalid"),
+            "Error message should mention guild_id or invalid, got: {}",
+            err_msg
+        );
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+        }
+    }
+
+    #[test]
+    fn config_absent_config_file() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        // Set required env vars
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "test_token");
+            std::env::set_var("THUFIR_DISCORD__GUILD_ID", "555");
+        }
+
+        // Try to load with a nonexistent TOML file path
+        let config = Config::load(Some("/nonexistent/path/config.toml"));
+        assert!(config.is_ok(), "Config should load even with absent TOML file (optional)");
+
+        let config = config.unwrap();
+        assert_eq!(config.discord.guild_id, 555);
+        assert_eq!(config.discord.token, "test_token");
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+        }
+    }
+
+    #[test]
+    fn config_dashboard_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap();
+
+        // Set only required env vars, no dashboard config
+        unsafe {
+            std::env::set_var("DISCORD_TOKEN", "test_token");
+            std::env::set_var("THUFIR_DISCORD__GUILD_ID", "777");
+        }
+
+        let config = Config::load(None).expect("Config should load");
+
+        // Verify dashboard defaults are applied
+        assert_eq!(config.volume_leaders.dashboard_days, 365, "dashboard_days should default to 365");
+        assert_eq!(config.volume_leaders.dashboard_count, 10, "dashboard_count should default to 10");
+
+        // Clean up
+        unsafe {
+            std::env::remove_var("DISCORD_TOKEN");
+            std::env::remove_var("THUFIR_DISCORD__GUILD_ID");
+        }
+    }
 }
