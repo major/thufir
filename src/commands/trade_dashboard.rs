@@ -66,7 +66,10 @@ pub fn validate_count(count: u32) -> Result<u32, String> {
 fn compute_date_range(days: u32) -> (String, String) {
     let end = Utc::now();
     let start = end - chrono::Duration::days(i64::from(days));
-    (start.format("%m/%d/%Y").to_string(), end.format("%m/%d/%Y").to_string())
+    (
+        start.format("%m/%d/%Y").to_string(),
+        end.format("%m/%d/%Y").to_string(),
+    )
 }
 
 /// Build the common filter list used by trades and clusters requests.
@@ -136,8 +139,12 @@ pub async fn trade_dashboard(
     let clusters_req = TradeClustersRequest::new()
         .with_cluster_filters(filters.clone())
         .with_length(count as i32);
-    let levels_req = TradeLevelsRequest::new()
-        .with_chart_filters(&ticker, &start_date, &end_date, count as usize);
+    let levels_req = TradeLevelsRequest::new().with_chart_filters(
+        &ticker,
+        &start_date,
+        &end_date,
+        count as usize,
+    );
     let bombs_req = TradeClusterBombsRequest::new()
         .with_cluster_bomb_filters(filters)
         .with_length(count as i32);

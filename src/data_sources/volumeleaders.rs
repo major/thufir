@@ -16,14 +16,11 @@ use tokio::sync::RwLock;
 
 /// Type-erased async function that performs login and returns a fresh [`Client`].
 ///
-/// Production code calls [`rusty_volumeleaders::login`] followed by
+/// Production code calls [`rusty_volumeleaders::login()`] followed by
 /// [`Client::with_config`]. Tests inject a closure that returns a mock client
 /// and tracks call counts.
 type LoginFn = Arc<
-    dyn Fn(
-            String,
-            String,
-        ) -> Pin<Box<dyn Future<Output = Result<Client, ClientError>> + Send>>
+    dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Result<Client, ClientError>> + Send>>
         + Send
         + Sync,
 >;
@@ -246,10 +243,7 @@ mod tests {
         let bombs = manager
             .get_trade_cluster_bombs(&TradeClusterBombsRequest::default())
             .await;
-        assert!(
-            bombs.is_ok(),
-            "get_trade_cluster_bombs failed: {bombs:?}"
-        );
+        assert!(bombs.is_ok(), "get_trade_cluster_bombs failed: {bombs:?}");
         assert!(bombs.unwrap().data.is_empty());
     }
 

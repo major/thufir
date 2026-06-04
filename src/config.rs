@@ -14,8 +14,8 @@
 //! - `THUFIR_VOLUME_LEADERS__DASHBOARD_COUNT`: Dashboard top count (default: 10)
 
 use figment::{
-    providers::{Env, Format, Serialized, Toml},
     Figment,
+    providers::{Env, Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
 
@@ -129,8 +129,9 @@ impl Config {
             .map_err(|e| crate::Error::Config(e.to_string()))?;
 
         // Load DISCORD_TOKEN from environment (not THUFIR_ prefixed)
-        config.discord.token = std::env::var("DISCORD_TOKEN")
-            .map_err(|_| crate::Error::Config("DISCORD_TOKEN environment variable not set".to_string()))?;
+        config.discord.token = std::env::var("DISCORD_TOKEN").map_err(|_| {
+            crate::Error::Config("DISCORD_TOKEN environment variable not set".to_string())
+        })?;
 
         // Validate that guild_id was set
         if config.discord.guild_id == 0 {
@@ -217,7 +218,10 @@ mod tests {
         }
 
         let config = Config::load(None);
-        assert!(config.is_err(), "Config should fail without THUFIR_DISCORD__GUILD_ID");
+        assert!(
+            config.is_err(),
+            "Config should fail without THUFIR_DISCORD__GUILD_ID"
+        );
 
         let err = config.unwrap_err();
         let err_msg = err.to_string();
@@ -281,8 +285,14 @@ log_level = "debug"
         let config = Config::load(Some(temp_path)).expect("Config should load with TOML and env");
 
         // Env vars should override TOML values
-        assert_eq!(config.discord.guild_id, 999, "Env var should override TOML guild_id");
-        assert_eq!(config.bot.log_level, "warn", "Env var should override TOML log_level");
+        assert_eq!(
+            config.discord.guild_id, 999,
+            "Env var should override TOML guild_id"
+        );
+        assert_eq!(
+            config.bot.log_level, "warn",
+            "Env var should override TOML log_level"
+        );
         assert_eq!(config.discord.token, "test_token_override");
 
         // Clean up
@@ -305,7 +315,10 @@ log_level = "debug"
         }
 
         let config = Config::load(None);
-        assert!(config.is_err(), "Config should fail with non-numeric guild_id");
+        assert!(
+            config.is_err(),
+            "Config should fail with non-numeric guild_id"
+        );
 
         let err = config.unwrap_err();
         let err_msg = err.to_string();
@@ -334,7 +347,10 @@ log_level = "debug"
 
         // Try to load with a nonexistent TOML file path
         let config = Config::load(Some("/nonexistent/path/config.toml"));
-        assert!(config.is_ok(), "Config should load even with absent TOML file (optional)");
+        assert!(
+            config.is_ok(),
+            "Config should load even with absent TOML file (optional)"
+        );
 
         let config = config.unwrap();
         assert_eq!(config.discord.guild_id, 555);
@@ -360,8 +376,14 @@ log_level = "debug"
         let config = Config::load(None).expect("Config should load");
 
         // Verify dashboard defaults are applied
-        assert_eq!(config.volume_leaders.dashboard_days, 365, "dashboard_days should default to 365");
-        assert_eq!(config.volume_leaders.dashboard_count, 10, "dashboard_count should default to 10");
+        assert_eq!(
+            config.volume_leaders.dashboard_days, 365,
+            "dashboard_days should default to 365"
+        );
+        assert_eq!(
+            config.volume_leaders.dashboard_count, 10,
+            "dashboard_count should default to 10"
+        );
 
         // Clean up
         unsafe {

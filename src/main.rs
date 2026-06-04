@@ -67,12 +67,8 @@ async fn main() -> thufir::Result<()> {
         })
         .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
-                poise::builtins::register_in_guild(
-                    ctx,
-                    &framework.options().commands,
-                    guild_id,
-                )
-                .await?;
+                poise::builtins::register_in_guild(ctx, &framework.options().commands, guild_id)
+                    .await?;
                 info!("Commands registered in guild {guild_id}");
                 Ok(app_state)
             })

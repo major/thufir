@@ -33,7 +33,7 @@ pub struct DashboardEmbed {
 pub struct EmbedField {
     /// Section name (e.g. "Trades").
     pub name: String,
-    /// Formatted rows, capped at [`FIELD_CHAR_LIMIT`] characters.
+    /// Formatted rows, capped at the per-field character limit.
     pub value: String,
     /// Whether this field renders inline. Always `false` for dashboard fields.
     pub inline: bool,
@@ -42,8 +42,8 @@ pub struct EmbedField {
 /// Build a Discord embed from dashboard data.
 ///
 /// Each section is rendered from the first `count` items of the corresponding
-/// slice. Field values are truncated to [`FIELD_CHAR_LIMIT`] characters, and the
-/// total text across all fields is capped at [`TOTAL_CHAR_LIMIT`].
+/// slice. Field values are truncated to the per-field character limit, and the
+/// total text across all fields is capped at the embed-wide character limit.
 ///
 /// # Arguments
 ///
@@ -185,10 +185,7 @@ fn format_trade(trade: &Trade) -> String {
     let rank = trade
         .trade_rank
         .map_or_else(|| NA.to_owned(), |r| format!("#{r}"));
-    let time = trade
-        .full_time_string_24
-        .as_deref()
-        .unwrap_or(NA);
+    let time = trade.full_time_string_24.as_deref().unwrap_or(NA);
     let price = format_decimal(trade.price.as_ref());
     let dollars = format_decimal(trade.dollars.as_ref());
     format!("{rank} {time} ${price} ${dollars}M")
@@ -199,14 +196,8 @@ fn format_cluster(cluster: &TradeCluster) -> String {
     let rank = cluster
         .trade_cluster_rank
         .map_or_else(|| NA.to_owned(), |r| format!("#{r}"));
-    let min_time = cluster
-        .min_full_time_string_24
-        .as_deref()
-        .unwrap_or(NA);
-    let max_time = cluster
-        .max_full_time_string_24
-        .as_deref()
-        .unwrap_or(NA);
+    let min_time = cluster.min_full_time_string_24.as_deref().unwrap_or(NA);
+    let max_time = cluster.max_full_time_string_24.as_deref().unwrap_or(NA);
     let price = format_decimal(cluster.price.as_ref());
     let dollars = format_decimal(cluster.dollars.as_ref());
     format!("{rank} {min_time}-{max_time} ${price} ${dollars}M")
@@ -258,7 +249,13 @@ mod tests {
     }
 
     /// Deserialize a TradeCluster from a JSON fragment.
-    fn make_cluster(rank: i64, min_time: &str, max_time: &str, price: i64, dollars: i64) -> TradeCluster {
+    fn make_cluster(
+        rank: i64,
+        min_time: &str,
+        max_time: &str,
+        price: i64,
+        dollars: i64,
+    ) -> TradeCluster {
         serde_json::from_str(&format!(
             r#"{{"TradeClusterRank":{rank},"MinFullTimeString24":"{min_time}","MaxFullTimeString24":"{max_time}","Price":{price},"Dollars":{dollars}}}"#
         ))
@@ -311,10 +308,7 @@ mod tests {
             make_level(1, 150, 10000000, 5),
             make_level(2, 155, 7000000, 3),
         ];
-        let bombs = vec![
-            make_bomb(1, 148, 12000000),
-            make_bomb(2, 152, 9000000),
-        ];
+        let bombs = vec![make_bomb(1, 148, 12000000), make_bomb(2, 152, 9000000)];
 
         let embed = build_dashboard_embed("aapl", &trades, &clusters, &levels, &bombs, 10);
 
@@ -351,9 +345,8 @@ mod tests {
         let levels: Vec<TradeLevel> = (1..=100)
             .map(|i| make_level(i, 999999, 888888888, 99))
             .collect();
-        let bombs: Vec<TradeClusterBomb> = (1..=100)
-            .map(|i| make_bomb(i, 999999, 888888888))
-            .collect();
+        let bombs: Vec<TradeClusterBomb> =
+            (1..=100).map(|i| make_bomb(i, 999999, 888888888)).collect();
 
         let embed = build_dashboard_embed("aapl", &trades, &clusters, &levels, &bombs, 100);
 
@@ -372,8 +365,14 @@ mod tests {
             }
         }
 
-        assert!(total_chars <= TOTAL_CHAR_LIMIT, "total {total_chars} > {TOTAL_CHAR_LIMIT}");
-        assert!(has_more, "expected at least one field with '+N more' suffix");
+        assert!(
+            total_chars <= TOTAL_CHAR_LIMIT,
+            "total {total_chars} > {TOTAL_CHAR_LIMIT}"
+        );
+        assert!(
+            has_more,
+            "expected at least one field with '+N more' suffix"
+        );
     }
 
     #[test]
@@ -388,7 +387,11 @@ mod tests {
 
         assert_eq!(embed.fields.len(), 4);
         for field in &embed.fields {
-            assert!(!field.value.is_empty(), "field '{}' has empty value", field.name);
+            assert!(
+                !field.value.is_empty(),
+                "field '{}' has empty value",
+                field.name
+            );
             assert!(
                 field.value.contains(NA) || field.value.contains(NO_DATA),
                 "field '{}' should contain N/A or No data available: {}",
@@ -404,7 +407,11 @@ mod tests {
 
         assert_eq!(embed.fields.len(), 4);
         for field in &embed.fields {
-            assert_eq!(field.value, NO_DATA, "field '{}' should be '{NO_DATA}'", field.name);
+            assert_eq!(
+                field.value, NO_DATA,
+                "field '{}' should be '{NO_DATA}'",
+                field.name
+            );
         }
     }
 }

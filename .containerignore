@@ -1,5 +1,8 @@
 .env
+podman/.env
+podman/thufir.toml
 target/
 .git/
 .sisyphus/
 lcov.info
+*.profraw

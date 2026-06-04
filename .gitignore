@@ -25,3 +25,11 @@ rustc-ice-*.txt
 
 .sisyphus
 PLAN.md
+
+# Coverage artifacts
+lcov.info
+*.profraw
+
+# Local podman-compose runtime files with secrets or machine-specific config
+podman/.env
+podman/thufir.toml
