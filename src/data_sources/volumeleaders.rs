@@ -1,18 +1,21 @@
 //! Session-backed client manager for the VolumeLeaders API.
 //!
-//! Wraps [`rusty_volumeleaders::Client`] with automatic re-authentication
-//! on session expiry. The manager detects expired sessions and retries
-//! login exactly once before surfacing the error.
+//! Wraps [`rusty_volumeleaders::Client`] with cache-first startup and
+//! automatic re-authentication on auth failures. The manager refreshes
+//! cached XSRF tokens, falls back to credential login, and retries login
+//! exactly once before surfacing the error.
 
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
 
 use rusty_volumeleaders::{
-    Client, ClientConfig, ClientError, DataTablesResponse, Trade, TradeCluster, TradeClusterBomb,
-    TradeClusterBombsRequest, TradeClustersRequest, TradeLevel, TradeLevelsRequest, TradesRequest,
+    Client, ClientConfig, ClientError, DataTablesResponse, Session, Trade, TradeCluster,
+    TradeClusterBomb, TradeClusterBombsRequest, TradeClustersRequest, TradeLevel,
+    TradeLevelsRequest, TradesRequest,
 };
 use tokio::sync::RwLock;
+use tracing::{debug, warn};
 
 /// Type-erased async function that performs login and returns a fresh [`Client`].
 ///
@@ -28,7 +31,7 @@ type LoginFn = Arc<
 /// Manages an authenticated VolumeLeaders API session.
 ///
 /// Stores credentials alongside the HTTP client so it can transparently
-/// re-authenticate when the server reports session expiry.
+/// re-authenticate when the server reports an expired or rejected session.
 pub struct VolumeLeadersManager {
     username: String,
     password: String,
@@ -36,9 +39,9 @@ pub struct VolumeLeadersManager {
     login_fn: LoginFn,
 }
 
-/// Call a dashboard method on the inner client, retrying login exactly once
-/// on session expiry. Avoids lifetime issues with async closures by expanding
-/// the retry logic inline.
+/// Call a dashboard method on the inner client, retrying login exactly once on
+/// session expiry or HTTP 401/403. Avoids lifetime issues with async closures
+/// by expanding the retry logic inline.
 macro_rules! call_with_retry {
     ($self:expr, $method:ident, $request:expr) => {{
         let result = {
@@ -47,7 +50,7 @@ macro_rules! call_with_retry {
         };
         match result {
             Ok(value) => Ok(value),
-            Err(e) if e.is_session_expired() => {
+            Err(e) if should_relogin(&e) => {
                 $self.relogin().await?;
                 let client = $self.client.read().await;
                 client
@@ -61,23 +64,22 @@ macro_rules! call_with_retry {
 }
 
 impl VolumeLeadersManager {
-    /// Create a new manager by logging in with the given credentials.
+    /// Create a new manager from the cached session or given credentials.
     ///
-    /// Performs an initial login to establish the session, then stores
-    /// the credentials for future re-authentication attempts.
+    /// Refreshes the cached session's XSRF token when cache material exists,
+    /// otherwise logs in and stores the credentials for future
+    /// re-authentication attempts.
     pub async fn new(username: String, password: String) -> crate::Result<Self> {
         let config = ClientConfig::default();
-        let session = rusty_volumeleaders::login(&username, &password)
-            .await
-            .map_err(|e| crate::Error::VolumeLeaders(e.to_string()))?;
-        let client = Client::with_config(session, config)
-            .map_err(|e| crate::Error::VolumeLeaders(e.to_string()))?;
+        let client = match client_from_cached_session(config.clone()).await {
+            Some(client) => client,
+            None => login_client(&username, &password, config.clone())
+                .await
+                .map_err(|e| crate::Error::VolumeLeaders(e.to_string()))?,
+        };
 
         let login_fn: LoginFn = Arc::new(|u, p| {
-            Box::pin(async move {
-                let session = rusty_volumeleaders::login(&u, &p).await?;
-                Client::with_config(session, ClientConfig::default())
-            })
+            Box::pin(async move { login_client(&u, &p, ClientConfig::default()).await })
         });
 
         Ok(Self {
@@ -148,6 +150,74 @@ impl VolumeLeadersManager {
     }
 }
 
+/// Return whether a failed request should trigger one fresh login attempt.
+fn should_relogin(error: &ClientError) -> bool {
+    error.is_session_expired()
+        || matches!(
+            error,
+            ClientError::Status {
+                code: 401 | 403,
+                ..
+            }
+        )
+}
+
+/// Build a client from the shared session cache, refreshing its XSRF token first.
+async fn client_from_cached_session(config: ClientConfig) -> Option<Client> {
+    let session = rusty_volumeleaders::load_cached_session()?;
+    debug!("using cached VolumeLeaders session");
+
+    match build_client_from_session(session, config).await {
+        Ok(client) => Some(client),
+        Err(err) => {
+            if should_clear_cached_session(&err) {
+                warn!(error = %err, "cached VolumeLeaders session invalid, clearing cache");
+                rusty_volumeleaders::clear_cache();
+            } else {
+                warn!(error = %err, "cached VolumeLeaders session unusable, falling back to login");
+            }
+            None
+        }
+    }
+}
+
+/// Log in with credentials, cache the new session, and build an authenticated client.
+async fn login_client(
+    username: &str,
+    password: &str,
+    config: ClientConfig,
+) -> Result<Client, ClientError> {
+    let session = rusty_volumeleaders::login(username, password).await?;
+
+    if let Err(err) = rusty_volumeleaders::save_session(&session) {
+        warn!(error = %err, "failed to cache VolumeLeaders session");
+    }
+
+    build_client_from_session(session, config).await
+}
+
+/// Build a client from session cookies and refresh the XSRF token from VolumeLeaders.
+async fn build_client_from_session(
+    session: Session,
+    config: ClientConfig,
+) -> Result<Client, ClientError> {
+    let cookies = session.cookies().to_vec();
+    let bootstrap_client = Client::with_config(session, config.clone())?;
+    let xsrf_token = rusty_volumeleaders::extract_xsrf_token(&bootstrap_client).await?;
+    let refreshed_session = Session::new(cookies, xsrf_token);
+    Client::with_config(refreshed_session, config)
+}
+
+/// Return whether a cached session should be deleted after a failed refresh.
+fn should_clear_cached_session(error: &ClientError) -> bool {
+    matches!(
+        error,
+        ClientError::SessionExpired { .. }
+            | ClientError::SessionValidation { .. }
+            | ClientError::LoginFailed { .. }
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -179,6 +249,28 @@ mod tests {
                 panic!("login_fn should not be called in this test");
             })
         })
+    }
+
+    #[test]
+    fn should_relogin_for_session_expiry_and_forbidden_statuses() {
+        assert!(should_relogin(&ClientError::SessionExpired {
+            url: "https://www.volumeleaders.com/Login".to_string(),
+        }));
+        assert!(should_relogin(&ClientError::Status {
+            code: 401,
+            url: "https://www.volumeleaders.com/Trades/GetTrades".to_string(),
+            body: String::new(),
+        }));
+        assert!(should_relogin(&ClientError::Status {
+            code: 403,
+            url: "https://www.volumeleaders.com/Trades/GetTrades".to_string(),
+            body: String::new(),
+        }));
+        assert!(!should_relogin(&ClientError::Status {
+            code: 500,
+            url: "https://www.volumeleaders.com/Trades/GetTrades".to_string(),
+            body: String::new(),
+        }));
     }
 
     #[tokio::test]
@@ -298,6 +390,58 @@ mod tests {
             login_count.load(Ordering::SeqCst),
             1,
             "login should be called exactly once for re-auth"
+        );
+    }
+
+    #[tokio::test]
+    async fn volumeleaders_forbidden_status_reauth_retries_once() {
+        let mut forbidden_server = mockito::Server::new_async().await;
+        let _forbidden_mock = forbidden_server
+            .mock("POST", "/Trades/GetTrades")
+            .with_status(403)
+            .with_body("forbidden")
+            .create_async()
+            .await;
+
+        let mut success_server = mockito::Server::new_async().await;
+        let _success_mock = success_server
+            .mock("POST", "/Trades/GetTrades")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(datatables_body::<Trade>(vec![]))
+            .create_async()
+            .await;
+
+        let login_count = Arc::new(AtomicUsize::new(0));
+        let counter = login_count.clone();
+        let success_url = success_server.url();
+        let login_fn: LoginFn = Arc::new(move |_u, _p| {
+            counter.fetch_add(1, Ordering::SeqCst);
+            let url = success_url.clone();
+            Box::pin(async move {
+                Client::with_config(
+                    test_session(),
+                    ClientConfig {
+                        base_url: url,
+                        ..ClientConfig::default()
+                    },
+                )
+            })
+        });
+
+        let manager = VolumeLeadersManager::with_client_and_login(
+            test_client_for(&forbidden_server),
+            "user".into(),
+            "pass".into(),
+            login_fn,
+        );
+
+        let result = manager.get_trades(&TradesRequest::default()).await;
+        assert!(result.is_ok(), "403 retry should succeed: {result:?}");
+        assert_eq!(
+            login_count.load(Ordering::SeqCst),
+            1,
+            "login should be called exactly once for 403 re-auth"
         );
     }
 

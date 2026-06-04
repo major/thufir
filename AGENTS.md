@@ -50,7 +50,7 @@ Makefile               - quality gate targets
 3. `Config::load(path)` loads defaults, optional TOML, and env overrides.
 4. `init_observability(&config.bot.log_level)` initializes JSON tracing.
 5. `rusty_volumeleaders::resolve_credentials()` reads `VL_USERNAME` and `VL_PASSWORD`.
-6. `VolumeLeadersManager::new(username, password).await` performs startup login.
+6. `VolumeLeadersManager::new(username, password).await` tries a cached VolumeLeaders session first, refreshing its XSRF token from `/ExecutiveSummary`; if cache load or refresh fails, it logs in with the resolved credentials and saves the new session to the shared `rusty-volumeleaders` cache.
 7. `AppState` stores `Arc<RwLock<VolumeLeadersManager>>`.
 8. Poise `Framework` registers commands in one guild via `register_in_guild()`.
 9. Serenity client uses `GatewayIntents::non_privileged()`.
@@ -99,7 +99,9 @@ Commands are registered guild-only. Add new commands to `commands::get_commands(
 ## VolumeLeaders and Dashboard
 
 - `VolumeLeadersManager` stores credentials and a `rusty_volumeleaders::Client` behind `Arc<RwLock<_>>`.
-- `call_with_retry!` retries exactly once after session expiry by re-authenticating.
+- Startup reuses `rusty-volumeleaders` cached session cookies when possible, refreshes the XSRF token before building the client, and falls back to credential login when the cache is missing or invalid.
+- Fresh credential logins save session material back to the `rusty-volumeleaders` cache.
+- `call_with_retry!` retries exactly once after session expiry or HTTP 401/403 by re-authenticating.
 - `/trade-dashboard` validates before external work, defers the Discord response, then fetches trades, clusters, levels, and cluster bombs.
 - `dashboard.rs` enforces Discord limits: 1024 characters per field and 6000 total characters.
 
