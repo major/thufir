@@ -29,7 +29,7 @@ default = []
 
 [dev-dependencies]
 assert_cmd = "2"
-mockall = "0.13"
+mockall = "0.14"
 mockito = "1.7"
 predicates = "3"
 rusty-volumeleaders = { version = "0.7", default-features = false, features = ["test-support"] }
