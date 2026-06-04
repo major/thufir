@@ -122,14 +122,14 @@ Container build:
 | `clippy` | `cargo clippy --workspace --all-targets --all-features -- -D warnings` |
 | `test` | `cargo test --workspace --all-features` |
 | `doc` | `RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps --document-private-items` |
-| `coverage` | `cargo llvm-cov`, 90% line coverage |
+| `coverage` | `cargo llvm-cov`, 90% line coverage for local `make check` |
 | `patch-coverage` | `diff-cover`, 95% patch coverage against `main` |
 
 Additional targets: `make audit`, `make machete`, `make integration`, `make container-build`, `make container-run`, `make container-run-config`.
 
 ## CI and Testing
 
-`.github/workflows/ci.yml` runs fmt, clippy, test, MSRV 1.96 `cargo check --locked`, docs with warnings denied, and llvm-cov with 90% coverage. `.github/workflows/audit.yml` runs weekly and on `Cargo.lock` or `Cargo.toml` changes.
+`.github/workflows/ci.yml` runs fmt, clippy, test, MSRV 1.96 `cargo check --locked`, docs with warnings denied, and llvm-cov LCOV generation/upload without a blocking coverage threshold while the baseline catches up. `.github/workflows/audit.yml` runs weekly and on `Cargo.lock` or `Cargo.toml` changes.
 
 All CI tests use mocks and require zero live secrets. Unit tests live inline in `#[cfg(test)] mod tests`; `tests/cli.rs` verifies CLI help/version without secrets. Use mockito for VolumeLeaders HTTP responses, mockall for trait mocks, assert_cmd for CLI tests, and `#[tokio::test]` for async tests. The `rusty-volumeleaders` `test-support` feature provides `test_session()` and `datatables_body()`.
 
