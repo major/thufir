@@ -2556,9 +2556,9 @@ checksum = "b39cdef0fa800fc44525c84ccb54a029961a8215f9619753635a9c0d2538d46d"
 
 [[package]]
 name = "rusty-volumeleaders"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6cfd614fc4d74c8bdd5f0379229f122725b0b2b7cdc96eb385f6d514868e5415"
+checksum = "f18a0830d447f3a70e80dab771ae35d80c490844a294cce3c82881b65fe5e155"
 dependencies = [
  "chrono",
  "dirs",
