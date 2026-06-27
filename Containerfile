@@ -15,7 +15,7 @@ COPY . .
 RUN cargo build --release --locked
 
 # Runtime: Red Hat hardened core runtime
-FROM registry.access.redhat.com/hi/core-runtime:2.42@sha256:dcd72eaa2df901c4915e1eec915906c8787c64b9e4149b4211d4500fbbe71791
+FROM registry.access.redhat.com/hi/core-runtime:2.42@sha256:3fadedf666f137f7d36a673fcf215307bf19bc56c12eb6a323674606eac3c5bf
 
 COPY --from=builder /usr/lib64/libssl.so.3 /usr/lib64/libcrypto.so.3 /usr/lib64/
 COPY --from=builder /app/target/release/thufir /usr/bin/thufir
